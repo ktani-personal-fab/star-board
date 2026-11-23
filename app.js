@@ -29,16 +29,32 @@ const retroShown = b => b.id >= 2 && b.id <= 9 && b.speed < 0;
 
 // ---- time -----------------------------------------------------------------------------------
 let nowMs = () => Date.now();
-const now = () => nowMs() / 1000;
-const D = t => new Date(t * 1000);
+const now = () => fixed ? fixed.t : nowMs() / 1000;
+let fixed = null;                                 // chart of another date / place: { t, zone, name, pos }
+const fmts = {};
+function tzOff(t, zone = fixed && fixed.zone) {  // seconds east of UTC, with historical rules from the OS
+  if (!zone) return -new Date(t * 1000).getTimezoneOffset() * 60;
+  const f = fmts[zone] || (fmts[zone] = new Intl.DateTimeFormat("en-US", { timeZone: zone, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" }));
+  const p = {}; for (const x of f.formatToParts(new Date(t * 1000))) p[x.type] = +x.value;
+  return Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute, p.second) / 1000 - Math.floor(t);
+}
+function toUtc(local, zone) {                     // wall-clock seconds -> UTC seconds
+  let t = local - tzOff(local, zone);
+  t = local - tzOff(t, zone);
+  return t;
+}
+const D = t => {                                  // wall clock of the chart's place
+  const d = new Date((t + tzOff(t)) * 1000);
+  return { getFullYear: () => d.getUTCFullYear(), getMonth: () => d.getUTCMonth(), getDate: () => d.getUTCDate(), getDay: () => d.getUTCDay(), getHours: () => d.getUTCHours(), getMinutes: () => d.getUTCMinutes(), getSeconds: () => d.getUTCSeconds() };
+};
 const hm = t => { const d = D(Math.round(t / 60) * 60); return `${two(d.getHours())}:${two(d.getMinutes())}`; };
 const dayNo = t => { const d = D(t); return Math.round(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 864e5); };
 const mday = t => `${D(t).getMonth() + 1}/${D(t).getDate()}`;
 function when(t, err = 0, n = now()) {           // precision follows the engine's uncertainty
   t = Math.round(t / 60) * 60;
   const k = dayNo(t) - dayNo(n), y = D(t).getFullYear() !== D(n).getFullYear() ? D(t).getFullYear() + "/" : "";
-  const day = k === 0 ? "" : k === 1 ? "明日 " : y + mday(t) + " ";
-  if (err > 10800) return k === 0 ? "今日頃" : (k === 1 ? "明日" : y + mday(t)) + "頃";
+  const day = k === 0 ? "" : k === 1 ? (fixed ? "翌日 " : "明日 ") : y + mday(t) + " ";
+  if (err > 10800) return k === 0 ? (fixed ? "当日頃" : "今日頃") : (k === 1 ? (fixed ? "翌日" : "明日") : y + mday(t)) + "頃";
   return day + hm(t) + (err > 180 ? "頃" : "");
 }
 const hhmm = t => t ? (dayNo(t) !== dayNo(now()) ? "翌" : "") + hm(t) : "—";
@@ -55,7 +71,8 @@ function setPos(lat, lon, src) {
   // ~1 km is plenty for the chart, and it is all that is kept
   pos = { lat: Math.round(lat * 100) / 100, lon: Math.round(lon * 100) / 100, src, at: Date.now() };
   store.set("pos", pos);
-  $("gate").hidden = true;
+  if (!$("gate").hidden && !$("gate").classList.contains("when")) $("gate").hidden = true;
+  if (fixed) return;                              // a chart of another date stays as it is
   F = null; refresh(true);
 }
 function locate() {
@@ -67,22 +84,22 @@ function locate() {
     e => locFail(e.code === 1 ? "位置情報が許可されていません" : "位置情報を取得できません"),
     { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 });
 }
-function locFail(msg) { locState = msg; drawHead(); if (!pos) openGate(); gateState(); }
+function locFail(msg) { locState = msg; drawHead(); if (!pos && !fixed) openGate(); gateState(); }
 
 // ---- head and tabs --------------------------------------------------------------------------
 function drawHead() {
-  const d = D(now());
-  const c = pos ? `${two(Math.floor(Math.abs(pos.lat)))}.--${pos.lat < 0 ? "S" : "N"} ${Math.floor(Math.abs(pos.lon))}.--${pos.lon < 0 ? "W" : "E"}` : "—";
-  const st = locState === "busy" ? "現在地を取得中" : locState ? (pos ? "前回の位置を使用" : locState) : pos ? (pos.src === "gps" ? `現在地 ${hm(pos.at / 1000)}` : "手入力の位置") : "";
-  const html = `<div id="clock">${two(d.getHours())}:${two(d.getMinutes())}<small>${two(d.getSeconds())}</small></div>
-    <div class="where"><span>${d.getFullYear()}.${two(d.getMonth() + 1)}.${two(d.getDate())} ${WEEK[d.getDay()]}</span><br><span>${c}</span><br>
-    <button data-act="locate" class="${locState && locState !== "busy" ? "warn" : ""}" aria-label="現在地を更新">${st} ↻</button></div>`;
-  const h = $("head");
-  if (!h.firstChild || h.dataset.k !== c + st) { h.innerHTML = html; h.dataset.k = c + st; }
-  else {
-    $("clock").innerHTML = `${two(d.getHours())}:${two(d.getMinutes())}<small>${two(d.getSeconds())}</small>`;
-    h.querySelector(".where span").textContent = `${d.getFullYear()}.${two(d.getMonth() + 1)}.${two(d.getDate())} ${WEEK[d.getDay()]}`;
+  const d = D(now()), q = fixed ? fixed.pos : pos, f = d.getFullYear();
+  const c = q ? `${two(Math.floor(Math.abs(q.lat)))}.--${q.lat < 0 ? "S" : "N"} ${Math.floor(Math.abs(q.lon))}.--${q.lon < 0 ? "W" : "E"}` : "—";
+  const st = locState === "busy" ? "現在地を取得中" : locState ? (pos ? "前回の位置を使用" : locState) : pos ? (pos.src === "gps" ? `現在地 ${fixed ? "" : hm(pos.at / 1000)}` : "手入力の位置") : "位置を取得";
+  const date = `${f}.${two(d.getMonth() + 1)}.${two(d.getDate())} ${WEEK[d.getDay()]}`;
+  const clock = `${two(d.getHours())}:${two(d.getMinutes())}<small>${fixed ? "" : two(d.getSeconds())}</small>`;
+  const btn = fixed ? `<button data-act="live" class="warn">${fixed.name} ／ 現在に戻る ×</button>` : `<button data-act="locate" class="${locState && locState !== "busy" ? "warn" : ""}" aria-label="現在地を更新">${st} ↻</button>`;
+  const h = $("head"), key = c + btn;
+  if (!h.firstChild || h.dataset.k !== key) {
+    h.innerHTML = `<button data-act="when" aria-label="日時と場所を指定"><span id="clock"></span><span class="pick">日時を選ぶ ›</span></button><div class="where"><span id="hd"></span><br><span>${c}</span><br>${btn}</div>`;
+    h.dataset.k = key; h.classList.toggle("fixed", !!fixed);
   }
+  $("clock").innerHTML = clock; $("hd").textContent = date;
 }
 function drawTabs() {
   $("tabs").innerHTML = TABS.map((t, i) => `<button role="tab" data-tab="${i}" aria-selected="${i === tab}">${G.svg(G.UI[i], "", 1.4)}${t}</button>`).join("");
@@ -96,10 +113,10 @@ function moonSvg(r, elong) {                        // lit part, waxing lights t
 }
 function spread(gap) {                              // keep glyphs from colliding, order preserved
   const off = S.body.slice(0, 10).map(b => rev(b.lon - S.asc)), o = off.map((_, i) => i).sort((a, b) => off[a] - off[b]);
-  for (let it = 0; it < 120; it++) {
+  for (let it = 0; it < 400; it++) {
     let moved = false;
     for (let i = 0; i < 10; i++) {
-      const a = o[i], b = o[(i + 1) % 10], g = rev(off[b] - off[a]);
+      const a = o[i], b = o[(i + 1) % 10], g = off[b] + (i === 9 ? 360 : 0) - off[a];  // signed, so crossed pairs separate too
       if (g < gap - .01) { const p = (gap - g) / 2; off[a] -= p; off[b] += p; moved = true; }
     }
     if (!moved) break;
@@ -138,7 +155,7 @@ function wheel() {
 // ---- views: every view fits one screen, no scrolling. Chips switch the view inside a tab. -----
 const digs = b => DIG.filter(([f]) => b.flags & f).map(([, t]) => t).join("・");
 const PH4 = ["新月", "上弦", "満月", "下弦"];
-const SUBS = [["星図", "いま"], ["天体", "ハウス"], ["七天体", "外惑星", "一覧表"], ["惑星時間", "予定", "月"], ["図", "項目", "天体", "星座", "角度", "品位", "設定"]];
+const SUBS = [["星図", "要点"], ["天体", "ハウス"], ["七天体", "外惑星", "一覧表"], ["惑星時間", "予定", "月"], ["図", "項目", "天体", "星座", "角度", "品位", "設定"]];
 const sub = [0, 0, 0, 0, 0];
 let pg = 0, dayPick = 0;
 const wide = () => innerWidth > innerHeight && innerHeight < 521;
@@ -266,7 +283,7 @@ function drawTime() {
       return `<div class="item hour${k === S.hourIndex ? " now" : ""}"><span class="no">${k % 12 + 1}</span>${bodyG(b, "s")}<span>${BODY[b]}</span><span class="tm">${hm(a + (k % 12) * len)}</span></div>`;
     };
     const col = (o, t) => `<div class="col"><p class="sub">${t}</p>${rows(Array.from({ length: 12 }, (_, i) => h(o + i)))}</div>`;
-    return page(3, `<div class="cols">${col(0, `昼 ${hm(S.sunrise)}–${hm(S.sunset)}`)}${col(12, `夜 ${hm(S.sunset)}–${hm(S.nextSunrise)}`)}</div><p class="foot">日の主 ${BODY[S.dayRuler]}　いま ${BODY[S.hourRuler]}（${hm(S.hourEnd)}まで）</p>`);
+    return page(3, `<div class="cols">${col(0, `昼 ${hm(S.sunrise)}–${hm(S.sunset)}`)}${col(12, `夜 ${hm(S.sunset)}–${hm(S.nextSunrise)}`)}</div><p class="foot">日の主 ${BODY[S.dayRuler]}　現在の時 ${BODY[S.hourRuler]}（${hm(S.hourEnd)}まで）</p>`);
   }
   if (sub[3] === 1) {
     const d0 = dayNo(n), by = Array.from({ length: 7 }, () => []);
@@ -275,7 +292,7 @@ function drawTime() {
       const k = dayNo(Math.round(e.t / 60) * 60) - d0;
       if (k >= 0 && k < 7) by[k].push(e);
     }
-    const days = by.map((_, k) => { const t = n + k * 86400; return `<button data-day="${k}" aria-pressed="${dayPick === k}"><small>${k === 0 ? "今日" : WEEKJ[D(t).getDay()]}</small>${D(t).getDate()}</button>`; }).join("");
+    const days = by.map((_, k) => { const t = n + k * 86400; return `<button data-day="${k}" aria-pressed="${dayPick === k}"><small>${k === 0 ? (fixed ? "当日" : "今日") : WEEKJ[D(t).getDay()]}</small>${D(t).getDate()}</button>`; }).join("");
     return page(3, `<div class="days">${days}</div>` + paged(by[dayPick].map(evRow), 40, "この日の予定なし"));
   }
   const m = S.body[1], f = F && F.body[1], kv = [];
@@ -301,7 +318,7 @@ function drawGuide() {
     () => rows(SIGN.map((t, i) => lg(signG(i), t, `${ELEMENT[i % 4]}・${MODE[i % 3]}`))),
     () => rows(ASPECT.map((t, i) => lg(aspG(i), `${t} ${ANGLE[i]}°`, ASPECT_KW[i])).concat([tx("接近", "これから成立"), tx("分離", "成立した後"), tx("頃", "天体の遅さに応じて時刻に幅がある")])),
     () => rows([["本宮", "自分の星座"], ["高揚", "力が高まる星座"], ["三区分", "元素を支配"], ["境界", "度数域を支配"], ["フェイス", "10°域を支配"], ["損傷", "本宮の反対"], ["失墜", "高揚の反対"], ["漂泊", "品位なし"], ["カジミ", "太陽と17'以内"], ["燃焼", "太陽と8°30'以内"], ["光線下", "太陽と17°以内"]].map(([a, b]) => tx(a, b))),
-    () => `<div class="set"><p>いまの場所と時刻の空を、古典占星術の形式で示します。解釈は読む人に委ねます。</p><div class="btns"><button class="btn line" data-act="wake">${wake ? "常時点灯を止める" : "画面を消さない"}</button><button class="btn line" data-act="gate">位置を変更</button></div>
+    () => `<div class="set"><p>いまの場所と時刻の空を、古典占星術の形式で示します。解釈は読む人に委ねます。</p><div class="btns"><button class="btn line" data-act="wake">${wake ? "常時点灯を止める" : "画面を消さない"}</button><button class="btn line" data-act="gate">位置を変更</button><button class="btn line" data-act="when">日時と場所を指定</button></div>
       <p class="note">トロピカル黄道・ホールサイン。品位と点数はリリー、境界はエジプト式、三区分はドロテウス。位置の誤差は月が最大約4'、ほかは約2'以内。出没は通常1分未満（地形は含まない）。</p><p class="note">位置は約1km単位に丸め、この端末の中だけに保存します。外部には送信しません。</p></div>`];
   page(4, V[sub[4]]());
 }
@@ -320,12 +337,12 @@ async function rewake() {
 // ---- first run / manual position ------------------------------------------------------------
 function openGate() {
   const g = $("gate");
-  g.hidden = false;
+  g.hidden = false; g.className = "";
   g.innerHTML = `<svg width="120" height="120" viewBox="-60 -60 120 120" fill="none" stroke="var(--ring)" aria-hidden="true"><circle r="54"/><circle r="36"/><circle r="3" fill="var(--gold)" stroke="none"/><circle cx="36" r="4.5" fill="var(--ink)" stroke="none"/><path d="M-54 0H54" stroke-dasharray="4 4"/></svg>
     <h1>Star Board</h1><p>いまいる場所の空を計算します。位置はこの端末の中だけで使います。</p>
     <button class="btn" data-act="locate" id="gl">現在地を使う</button><p id="gm" role="status"></p>
     <form class="pos"><label>緯度（北緯＋）<input name="lat" inputmode="text" autocomplete="off"></label><label>経度（東経＋）<input name="lon" inputmode="text" autocomplete="off"></label><button class="btn line">この位置で表示</button></form>
-    ${pos ? '<button class="btn line" data-act="ungate">戻る</button>' : ""}`;
+    ${pos ? '<button class="btn line" data-act="ungate">戻る</button>' : '<button class="btn line" data-act="when">日時と場所を指定</button>'}`;
   gateState();
 }
 function gateState() {
@@ -333,12 +350,53 @@ function gateState() {
   $("gl").disabled = locState === "busy";
   $("gm").textContent = locState === "busy" ? "取得中…" : locState;
 }
+// ---- another date and place (kept in memory only, gone when the app closes) --------------------
+let last = null;
+function openWhen() {
+  const g = $("gate"), z = [...new Set(PLACES.map(p => p.zone))], d = D(now()), v = last || { date: `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`, time: `${two(d.getHours())}:${two(d.getMinutes())}`, place: pos ? "here" : "", lat: "", lon: "", zone: "" };
+  const opt = (val, t) => `<option value="${val}"${String(v.place) === String(val) ? " selected" : ""}>${t}</option>`;
+  const my = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Tokyo";
+  if (!z.includes(my)) z.unshift(my);
+  g.hidden = false; g.className = "when";
+  g.innerHTML = `<h1>Date &amp; Place</h1><p>その日時・場所の空を表示します。入力は保存されず、アプリを閉じると消えます。</p>
+    <form class="pos" id="wf"><label>日付（1900–2100年）<input type="date" name="date" min="1900-01-01" max="2100-12-31" value="${v.date}" required></label><label>時刻（現地）<input type="time" name="time" value="${v.time}" required></label>
+    <label class="w">場所<select name="place" required><option value="">選択してください</option>${pos ? opt("here", "現在地") : ""}${opt("custom", "緯度・経度を入力")}<optgroup label="日本">${PLACES.map((p, i) => p.zone === "Asia/Tokyo" ? opt(i, p.name) : "").join("")}</optgroup><optgroup label="海外">${PLACES.map((p, i) => p.zone !== "Asia/Tokyo" ? opt(i, p.name) : "").join("")}</optgroup></select></label>
+    <div class="cu w" id="cu"><label>緯度（北緯＋）<input name="lat" autocomplete="off" value="${v.lat}"></label><label>経度（東経＋）<input name="lon" autocomplete="off" value="${v.lon}"></label><label class="w">タイムゾーン<select name="zone">${z.map(x => `<option${(v.zone || my) === x ? " selected" : ""}>${x}</option>`).join("")}</select></label></div>
+    <p id="gm" class="w" role="status"></p><button class="btn">この日時を表示</button><button type="button" class="btn line" data-act="ungate">戻る</button></form>`;
+  cuShow();
+}
+const cuShow = () => { const f = $("wf"); if (f) $("cu").hidden = f.place.value !== "custom"; };
+document.addEventListener("change", e => { if (e.target.name === "place") cuShow(); });
+function submitWhen(f) {
+  const n = v => parseFloat(v.normalize("NFKC").replace(/[−ー]/g, "-")), say = t => { $("gm").textContent = t; };
+  const m = /^(\d{4})-(\d\d)-(\d\d)$/.exec(f.date.value), h = /^(\d\d):(\d\d)/.exec(f.time.value), pv = f.place.value;
+  if (!m || +m[1] < 1900 || +m[1] > 2100) return say("日付は1900〜2100年で入力してください");
+  if (!h) return say("時刻を入力してください");
+  if (!pv) return say("場所を選択してください");
+  let p, zone, name;
+  if (pv === "here") { p = pos; zone = null; name = "現在地"; }
+  else if (pv === "custom") { p = { lat: n(f.lat.value), lon: n(f.lon.value) }; zone = f.zone.value; name = "指定の場所"; }
+  else { const c = PLACES[+pv]; p = { lat: c.lat, lon: c.lon }; zone = c.zone; name = c.name; }
+  if (!validPos(p)) return say("緯度は±89、経度は±180の範囲で入力してください");
+  if (!zone) zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Tokyo";
+  const local = Date.UTC(+m[1], +m[2] - 1, +m[3], +h[1], +h[2]) / 1000;
+  last = { date: f.date.value, time: f.time.value, place: pv, lat: f.lat.value, lon: f.lon.value, zone: f.zone.value };
+  setFixed({ t: toUtc(local, zone), zone, name, pos: { lat: p.lat, lon: p.lon } });
+}
+function setFixed(v) {
+  fixed = v; if (!v) last = null;
+  F = null; exact = {}; pg = 0; dayPick = 0; closeSheet();
+  $("gate").hidden = true;
+  drawHead(); refresh(true);
+  if (!v && !pos) openGate();
+}
 document.addEventListener("submit", e => {
   e.preventDefault();
+  if (e.target.id === "wf") return submitWhen(e.target);
   const n = v => parseFloat(v.normalize("NFKC").replace(/[−ー]/g, "-"));
   const lat = n(e.target.lat.value), lon = n(e.target.lon.value);
   if (!validPos({ lat, lon })) { $("gm").textContent = "緯度は±89、経度は±180の範囲で入力してください"; return; }
-  locState = ""; setPos(lat, lon, "manual"); drawHead();
+  locState = ""; fixed = null; last = null; setPos(lat, lon, "manual"); drawHead();
 });
 
 // ---- events and loop ------------------------------------------------------------------------
@@ -353,9 +411,11 @@ document.addEventListener("click", e => {
   else if (d.act === "next" || d.act === "prev") { pg = Math.max(0, pg + (d.act === "next" ? 1 : -1)); drawPage(); }
   else if (d.act === "locate") locate();
   else if (d.act === "close") closeSheet();
+  else if (d.act === "when") openWhen();
+  else if (d.act === "live") setFixed(null);
   else if (d.act === "wake") toggleWake();
   else if (d.act === "gate") openGate();
-  else if (d.act === "ungate") $("gate").hidden = true;
+  else if (d.act === "ungate") { if (pos || fixed) $("gate").hidden = true; else openGate(); }
 });
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeSheet(); });
 $("pages").addEventListener("scroll", () => {
@@ -367,18 +427,19 @@ addEventListener("resize", () => { $("pages").scrollLeft = $("pages").clientWidt
 const drawers = [drawSky, drawPlanets, drawAspects, drawTime, drawGuide];
 function drawPage() { if (S) drawers[tab](); }
 function refresh(all) {
-  if (!pos) return;
+  const q = fixed ? fixed.pos : pos;
+  if (!q) return;
   const n = now();
   document.documentElement.dataset.theme = isNight() ? "night" : "paper";
-  S = Engine.snap(n, pos.lat, pos.lon, -D(n).getTimezoneOffset() * 60);
-  if (!F || n - F.t > 300 || n < F.t) { F = Engine.forecast(n, pos.lat, pos.lon, 7); exact = {}; }
+  S = Engine.snap(n, q.lat, q.lon, tzOff(n));
+  if (!F || n - F.t > 300 || n < F.t) { F = Engine.forecast(n, q.lat, q.lon, 7); exact = {}; }
   if (all) { drawSky(); drawPlanets(); drawAspects(); drawTime(); drawGuide(); } else drawPage();
   if (sheetBody >= 0) drawSheet();
 }
 let lastDraw = 0;
 function tick() {
   drawHead();
-  if (document.hidden) return;
+  if (document.hidden || fixed) return;
   const n = Math.floor(now());
   if (Math.abs(n - lastDraw) >= 10 || n % 60 === 0) { lastDraw = n; refresh(false); }
   if (pos && pos.src === "gps" && locState !== "busy" && Date.now() - lastFetch > 600000) locate();
@@ -386,7 +447,7 @@ function tick() {
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) return;
   refresh(true); rewake();
-  if (pos && pos.src === "gps" && Date.now() - lastFetch > 60000) locate();
+  if (!fixed && pos && pos.src === "gps" && Date.now() - lastFetch > 60000) locate();
 });
 
 (async () => {

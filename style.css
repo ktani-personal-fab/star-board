@@ -96,6 +96,11 @@ form.pos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%
 form.pos label { font-size: 12px; color: var(--sub); text-align: left; }
 input { width: 100%; min-height: 44px; font: 400 17px var(--lat); padding: 0 12px; border: 1px solid var(--ring); border-radius: 8px; background: var(--card); color: var(--ink); }
 
+#clock { display: block; } .pick { display: block; font-size: 11px; line-height: 1; color: var(--sub); margin-top: 4px; }
+#head.fixed #clock { color: var(--clay); } #head.fixed { border-bottom: 2px solid var(--clay); }
+#gate.when { gap: 12px; } form.pos .w { grid-column: 1 / -1; } .cu { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; } #gate.when form { width: min(320px, 100vw - 56px); max-width: none; } #gm { min-height: 0; color: var(--clay); } #gm:empty { display: none; }
+select, input[type=date], input[type=time] { width: 100%; min-width: 0; min-height: 44px; font: 400 16px var(--txt); padding: 0 10px; border: 1px solid var(--ring); border-radius: 8px; background: var(--card); color: var(--ink); -webkit-appearance: none; appearance: none; text-align: left; }
+[data-theme=night] input, [data-theme=night] select { color-scheme: dark; }
 @media (max-width: 350px) { #gate { gap: 10px; } :root { --gut: 14px; } #clock { font-size: 34px; } .lg { grid-template-columns: 30px 88px 1fr; } }
 @media (orientation: landscape) and (max-height: 520px) {
   #clock { font-size: 26px; } #head { padding-top: 4px; padding-bottom: 4px; } .where br { display: none; } .where { white-space: nowrap; } .where span::after { content: "  "; }
@@ -106,6 +111,6 @@ input { width: 100%; min-height: 44px; font: 400 17px var(--lat); padding: 0 12p
   .facts { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(3, 1fr); gap: 0 26px; } .axes { align-self: center; }
   .moonv { display: grid; grid-template-columns: 1fr 1.6fr; align-items: center; } .moonv .moons { grid-column: 1 / -1; } .moonbox svg { width: 64px; } .grid td { flex-direction: row; gap: 3px; } .grid { max-width: 620px; }
   #sheet { max-width: 760px; padding-top: 4px; padding-bottom: 6px; } #sheet dl.kv { grid-template-columns: repeat(4, 1fr); } #sheet header .g.l { width: 22px; height: 22px; } .x { height: 34px; line-height: 34px; } dl.kv dt { font-size: 10px; } dl.kv dd { font-size: 12px; }
-  #gate { gap: 6px; padding-top: 8px; padding-bottom: 8px; } #gate svg { display: none; }
+  #gate { gap: 6px; padding-top: 8px; padding-bottom: 8px; } #gate svg { display: none; } #gate.when h1 { font-size: 18px; } #gate.when p { max-width: none; font-size: 12px; } #gate.when form { width: min(620px, 100vw - 80px); grid-template-columns: repeat(4, 1fr); gap: 6px; } #gate.when form > .w:not(#cu):not(#gm) { grid-column: span 2; } #gate.when #cu { grid-template-columns: 1fr 1fr 2fr; } #gate.when #cu .w { grid-column: auto; } #gate.when .btn { grid-column: span 2; min-height: 40px; } .pick { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { #sheet { animation: none; } #app { transition: none; } }
