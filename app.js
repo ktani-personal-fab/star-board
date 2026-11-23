@@ -60,6 +60,12 @@ function when(t, err = 0, n = now()) {           // precision follows the engine
 const hhmm = t => t ? (dayNo(t) !== dayNo(now()) ? "翌" : "") + hm(t) : "—";
 const isNight = () => { const h = D(now()).getHours(); return h >= 19 || h < 5; };
 
+function setTheme() {                            // page edges and the status bar follow the theme
+  const n = isNight();
+  document.documentElement.dataset.theme = n ? "night" : "paper";
+  document.querySelector("meta[name=theme-color]").content = n ? "#0A0F1F" : "#F2EDE4";
+}
+
 // ---- state ----------------------------------------------------------------------------------
 let pos = null, S = null, F = null, sheetBody = -1, tab = 0, locState = "", exact = {}, lastFetch = 0;
 const store = { get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { } } };
@@ -430,7 +436,7 @@ function refresh(all) {
   const q = fixed ? fixed.pos : pos;
   if (!q) return;
   const n = now();
-  document.documentElement.dataset.theme = isNight() ? "night" : "paper";
+  setTheme();
   S = Engine.snap(n, q.lat, q.lon, tzOff(n));
   if (!F || n - F.t > 300 || n < F.t) { F = Engine.forecast(n, q.lat, q.lon, 7); exact = {}; }
   if (all) { drawSky(); drawPlanets(); drawAspects(); drawTime(); drawGuide(); } else drawPage();
@@ -451,7 +457,7 @@ document.addEventListener("visibilitychange", () => {
 });
 
 (async () => {
-  document.documentElement.dataset.theme = isNight() ? "night" : "paper";
+  setTheme();
   drawTabs(); drawHead();
   try { await Engine.load(); }
   catch (e) { $("p0").innerHTML = '<p class="empty">計算エンジンを読み込めませんでした。開き直してください。</p>'; console.error(e); return; }

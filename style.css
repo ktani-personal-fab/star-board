@@ -15,10 +15,10 @@
   --ring: #465173; --clay: #E08E72; --gold: #E3BE78; --blue: #8C9DE6; --lit: #EFE3D2; --dark: #1C2440;
 }
 * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
-html, body { height: 100%; overflow: hidden; background: #0A0F1F; -webkit-text-size-adjust: 100%; overscroll-behavior: none; }
+html, body { height: 100%; overflow: hidden; background: var(--bg, #F2EDE4); -webkit-text-size-adjust: 100%; overscroll-behavior: none; }
 body { font: 400 15px/1.45 var(--txt); color: var(--ink); font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
 #app { position: fixed; inset: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); transition: background .6s; }
-#cap { flex: none; height: var(--st); background: #0A0F1F; }
+#cap { flex: none; height: var(--st); }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; text-align: inherit; }
 button:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 [hidden] { display: none !important; }
