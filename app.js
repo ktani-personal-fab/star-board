@@ -96,7 +96,7 @@ function drawHead() {
   const btn = fixed ? `<button data-act="live" class="warn">${fixed.name} ／ 現在に戻る ×</button>` : `<button data-act="locate" class="${locState && locState !== "busy" ? "warn" : ""}" aria-label="現在地を更新">${st} ↻</button>`;
   const h = $("head"), key = c + btn;
   if (!h.firstChild || h.dataset.k !== key) {
-    h.innerHTML = `<button data-act="when" aria-label="日時と場所を指定"><span id="clock"></span><span class="pick">日時を選ぶ ›</span></button><div class="where"><span id="hd"></span><br><span>${c}</span><br>${btn}</div>`;
+    h.innerHTML = `<button data-act="when" aria-label="日時と場所を指定"><span id="clock"></span><span class="pick">日時・場所を選ぶ ›</span></button><div class="where"><span id="hd"></span><br><span>${c}</span><br>${btn}</div>`;
     h.dataset.k = key; h.classList.toggle("fixed", !!fixed);
   }
   $("clock").innerHTML = clock; $("hd").textContent = date;
