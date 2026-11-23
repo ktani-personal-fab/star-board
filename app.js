@@ -45,7 +45,7 @@ const hhmm = t => t ? (dayNo(t) !== dayNo(now()) ? "翌" : "") + hm(t) : "—";
 const isNight = () => { const h = D(now()).getHours(); return h >= 19 || h < 5; };
 
 // ---- state ----------------------------------------------------------------------------------
-let pos = null, S = null, F = null, sheetBody = -1, tab = 0, filter = "all", locState = "", exact = {}, lastFetch = 0;
+let pos = null, S = null, F = null, sheetBody = -1, tab = 0, locState = "", exact = {}, lastFetch = 0;
 const store = { get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { } } };
 const validPos = p => p && Number.isFinite(p.lat) && Number.isFinite(p.lon) && Math.abs(p.lat) <= 89 && Math.abs(p.lon) <= 180;
 const errOf = (a, b) => ((a === 1 ? .09 : .03) + (b === 1 ? .09 : .03)) / Math.max(1e-4, Math.abs(S.body[a].speed - S.body[b].speed)) * 86400;
@@ -135,73 +135,91 @@ function wheel() {
   h += `<path d="M${a}L${q}L${r}Z" fill="var(--clay)"/>` + txt("MC", S.mc, RO + 8, 10.5, "sub") + `<g>${moonSvg(17, S.elong)}</g>`;
   return `<svg class="wheel" viewBox="-188 -188 376 376" role="img" aria-label="現在の星図">${h}</svg>`;
 }
+// ---- views: every view fits one screen, no scrolling. Chips switch the view inside a tab. -----
 const digs = b => DIG.filter(([f]) => b.flags & f).map(([, t]) => t).join("・");
-function drawSky() {
-  const m = S.body[1], lord = S.body[S.lord], phaseN = ["新月", "上弦", "満月", "下弦"];
-  const quad = [["ASC", S.asc], ["MC", S.mc], ["DSC", S.asc + 180], ["IC", S.mc + 180]].map(([k, l]) => `<div><span class="en">${k}</span><b>${signG(signOf(l), "s")} ${Math.floor(rev(l) % 30)}°${two(Math.floor(rev(l) * 60) % 60)}'</b></div>`).join("");
-  let next;
-  if (S.voc) next = `<div class="flow">${bodyG(1, "l")}<b>ボイド</b><span class="t">${when(S.ingress, 700)}</span><span class="sub">まで</span></div><p>月が${SIGN[signOf(m.lon)]}を出るまで主要な角度なし</p>`;
-  else next = `<div class="flow">${bodyG(1, "l")}${aspG(S.nextAspect, "l")}${bodyG(S.nextPlanet, "l")}<span class="t">${when(S.nextTime, 700)}</span></div>
-    <p>月 ${ASPECT[S.nextAspect]} ${BODY[S.nextPlanet]}（${ANGLE[S.nextAspect]}°）<br>${KW[1]} × ${KW[S.nextPlanet]} ／ ${ASPECT_KW[S.nextAspect]}<br>月は${when(S.ingress, 700)}に${SIGN[(signOf(m.lon) + 1) % 12]}へ</p>`;
-  const hour = S.hValid ? `<b>${bodyG(S.hourRuler)} ${BODY[S.hourRuler]}</b> <span class="sub">${hm(S.hourStart)}–${hm(S.hourEnd)}</span><p>${KW[S.hourRuler]}<br>${S.hourIndex < 12 ? "昼" : "夜"}の第${S.hourIndex % 12 + 1}時 ／ 日の主 ${BODY[S.dayRuler]}</p>` : `<p>日の出・日の入りがないため算出できません</p>`;
-  const up = F ? F.phase.map((t, k) => [t, k]).filter(x => x[0]).sort((a, b) => a[0] - b[0])[0] : null;
-  $("p0").innerHTML = `<div>${wheel()}<div class="quad">${quad}</div></div><div>
-    <div class="row"><span class="en">NEXT</span><div>${next}</div></div>
-    <div class="row"><span class="en">LORD</span><div><b>${bodyG(S.lord)} ${BODY[S.lord]}</b> <span class="sub">${SIGN[signOf(lord.lon)]} ${dms(lord.lon)}${retroShown(lord) ? " 逆行" : ""}</span><p>${KW[S.lord]}<br>第${lord.house}ハウス ／ ${digs(lord)}${lord.solar ? "・" + SOLAR[lord.solar] : ""}</p></div></div>
-    <div class="row"><span class="en">HOUR</span><div>${hour}</div></div>
-    <div class="row"><span class="en">MOON</span><div><b><svg class="g" viewBox="-11 -11 22 22" style="stroke:none">${moonSvg(9, S.elong)}</svg> ${PHASE[S.phase]}</b> <span class="sub">${SIGN[signOf(m.lon)]} ${dms(m.lon)}</span>
-      <p>${PHASE_KW[S.phase]}<br>輝面 ${Math.round(S.illum * 100)}% ／ 月齢 約${(S.elong / 360 * 29.53).toFixed(1)}${up ? `<br>${phaseN[up[1]]} ${when(up[0], 600)}` : ""}</p></div></div>
-    <div class="row"><span class="en">SECT</span><div><b>${S.day ? "昼のチャート" : "夜のチャート"}</b> <span class="sub">太陽高度 ${ang(S.sunAlt, true)}</span><p>フォルトゥナ ${SIGN[signOf(S.fortune)]} ${dms(S.fortune)}<br>スピリット ${SIGN[signOf(S.spirit)]} ${dms(S.spirit)}</p></div></div>
-    ${S.hValid ? `<div class="axes">${AX.map((t, i) => `<section><div><span class="en">${t}</span>${S["ax" + i]}</div><div class="bar"><i style="width:${S["ax" + i]}%;background:var(--${AXC[i]})"></i></div></section>`).join("")}</div>` : ""}</div>`;
+const PH4 = ["新月", "上弦", "満月", "下弦"];
+const SUBS = [["星図", "いま"], ["天体", "ハウス"], ["七天体", "外惑星", "一覧表"], ["惑星時間", "予定", "月"], ["図", "項目", "天体", "星座", "角度", "品位", "設定"]];
+const sub = [0, 0, 0, 0, 0];
+let pg = 0, dayPick = 0;
+const wide = () => innerWidth > innerHeight && innerHeight < 521;
+function page(k, body, cls = "") {
+  $("p" + k).innerHTML = `<div class="seg">${SUBS[k].map((t, i) => `<button data-sub="${i}" data-k="${k}" aria-pressed="${sub[k] === i}">${t}</button>`).join("")}</div><div class="view ${cls}">${body}</div>`;
 }
+const rows = a => `<div class="list" style="--n:${a.length};--h:${Math.ceil(a.length / 2)}">${a.join("")}</div>`;
+function paged(items, rowH, empty) {                 // only when a list is longer than the screen
+  if (!items.length) return `<p class="empty">${empty}</p>`;
+  const H = $("pages").clientHeight - 64, cap = Math.max(3, Math.floor((H - 30) / rowH)) * (wide() ? 2 : 1);
+  if (items.length <= Math.floor(H / rowH) * (wide() ? 2 : 1)) return rows(items);
+  const n = Math.ceil(items.length / cap); pg = Math.min(pg, n - 1);
+  return rows(items.slice(pg * cap, pg * cap + cap)) + `<div class="pager"><button data-act="prev" aria-label="前へ">‹</button><span>${pg + 1} / ${n}</span><button data-act="next" aria-label="次へ">›</button></div>`;
+}
+const moonIcon = (e, r = 9) => `<svg class="g" viewBox="-11 -11 22 22" style="stroke:none" aria-hidden="true">${moonSvg(r, e || .01)}</svg>`;
 
-// ---- PLANETS --------------------------------------------------------------------------------
+function drawSky() {
+  const m = S.body[1], lord = S.body[S.lord], K = S.nextPlanet;
+  const nextIc = S.voc ? `${bodyG(1)} ボイド ${when(S.ingress, 700)}まで` : `${bodyG(1)} ${aspG(S.nextAspect)} ${bodyG(K)} ${when(S.nextTime, 700)}`;
+  if (sub[0] === 0) {
+    const quad = [["ASC", S.asc], ["MC", S.mc], ["DSC", S.asc + 180], ["IC", S.mc + 180]].map(([k, l]) => `<div><span class="en">${k}</span><b>${signG(signOf(l), "s")} ${dms(l)}</b></div>`).join("");
+    return page(0, `<div class="wheelbox">${wheel()}</div><div class="strip"><div class="quad">${quad}</div>
+      <div class="ln"><span class="en">NEXT</span><span>${nextIc}</span><span class="sub">${S.voc ? "" : ASPECT[S.nextAspect]}</span></div>
+      <div class="ln"><span class="en">HOUR</span><span>${S.hValid ? `${bodyG(S.hourRuler)} ${BODY[S.hourRuler]}` : "—"}</span><span class="sub">${S.hValid ? `${hm(S.hourStart)}–${hm(S.hourEnd)}` : ""}</span></div>
+      <div class="ln"><span class="en">MOON</span><span>${moonIcon(S.elong)} ${PHASE[S.phase]}</span><span class="sub">${SIGN[signOf(m.lon)]} ${Math.round(S.illum * 100)}%</span></div></div>`, "sky");
+  }
+  const r = (t, a, b) => `<div class="row"><span class="en">${t}</span><div>${a}<p>${b}</p></div></div>`;
+  const next = S.voc ? `月が${SIGN[signOf(m.lon)]}を出るまで主要な角度なし`
+    : `月 ${ASPECT[S.nextAspect]} ${BODY[K]}（${ANGLE[S.nextAspect]}°） ${KW[1]} × ${KW[K]} ／ ${ASPECT_KW[S.nextAspect]}<br>月は${when(S.ingress, 700)}に${SIGN[(signOf(m.lon) + 1) % 12]}へ`;
+  const ph = phases()[0];
+  page(0, r("NEXT", `<b class="big">${nextIc}</b>`, next)
+    + r("LORD", `<b>${bodyG(S.lord)} ${BODY[S.lord]}</b> <span class="sub">${SIGN[signOf(lord.lon)]} ${dms(lord.lon)}${retroShown(lord) ? " 逆行" : ""}</span>`, `${KW[S.lord]} ／ 第${lord.house}ハウス ／ ${digs(lord)}${lord.solar ? "・" + SOLAR[lord.solar] : ""}`)
+    + r("HOUR", S.hValid ? `<b>${bodyG(S.hourRuler)} ${BODY[S.hourRuler]}</b> <span class="sub">${hm(S.hourStart)}–${hm(S.hourEnd)}</span>` : "<b>—</b>", S.hValid ? `${KW[S.hourRuler]} ／ ${S.hourIndex < 12 ? "昼" : "夜"}の第${S.hourIndex % 12 + 1}時 ／ 日の主 ${BODY[S.dayRuler]}` : "日の出・日の入りがないため算出できません")
+    + r("MOON", `<b>${moonIcon(S.elong)} ${PHASE[S.phase]}</b> <span class="sub">${SIGN[signOf(m.lon)]} ${dms(m.lon)}</span>`, `${PHASE_KW[S.phase]} ／ 輝面 ${Math.round(S.illum * 100)}%${ph ? ` ／ ${PH4[ph[1]]} ${when(ph[0], 600)}` : ""}`)
+    + r("SECT", `<b>${S.day ? "昼のチャート" : "夜のチャート"}</b> <span class="sub">太陽高度 ${ang(S.sunAlt, true)}</span>`, `フォルトゥナ ${SIGN[signOf(S.fortune)]} ${dms(S.fortune)} ／ スピリット ${SIGN[signOf(S.spirit)]} ${dms(S.spirit)}`)
+    + (S.hValid ? `<div class="axes">${AX.map((t, i) => `<section><div><span class="en">${t}</span>${S["ax" + i]}</div><div class="bar"><i style="width:${S["ax" + i]}%;background:var(--${AXC[i]})"></i></div></section>`).join("")}</div>` : ""), "facts");
+}
+const phases = () => F ? F.phase.map((t, k) => [t, k]).filter(x => x[0]).sort((a, b) => a[0] - b[0]) : [];
+
 function drawPlanets() {
-  const rows = S.body.map(b => {
+  if (sub[1] === 0) return page(1, rows(S.body.map(b => {
     const tag = [b.id < 7 ? digs(b) : "", b.solar ? SOLAR[b.solar] : "", retroShown(b) ? "逆行" : ""].filter(Boolean).join("・") || (b.id === 10 ? "昇交点（平均）" : "順行");
     return `<button class="item planet" data-body="${b.id}">${bodyG(b.id)}<span class="nm">${BODY[b.id]}<small>${tag}</small></span>
       <span class="deg">${signG(signOf(b.lon), "s")} ${dms(b.lon)}<small>${SIGN[signOf(b.lon)]} 第${b.house}</small></span>
       <span class="alt">${b.id === 10 ? "" : `${b.alt > 0 ? "↑" : "↓"}${Math.round(Math.abs(b.alt))}°<small>${COMPASS[Math.round(b.az / 22.5) % 16]}</small>`}</span></button>`;
-  }).join("");
-  const el = [0, 0, 0, 0], mo = [0, 0, 0];
+  })));
+  const el = [0, 0, 0, 0], mo = [0, 0, 0], a0 = signOf(S.asc);
   S.body.slice(0, 7).forEach(b => { el[signOf(b.lon) % 4]++; mo[signOf(b.lon) % 3]++; });
-  const a0 = signOf(S.asc);
-  const houses = HOUSE.map((k, i) => {
+  page(1, rows(HOUSE.map((k, i) => {
     const s = (a0 + i) % 12, r = [4, 3, 2, 1, 0, 2, 3, 4, 5, 6, 6, 5][s];
-    return `<div class="item house"><span class="no">${i + 1}</span>${signG(s)}<span>${SIGN[s]}<small>${k} ／ 主 ${BODY[r]}</small></span><span class="occ">${S.body.slice(0, 10).filter(b => b.house === i + 1).map(b => bodyG(b.id, "s")).join("")}</span></div>`;
-  }).join("");
-  $("p1").innerHTML = `<h2>PLANETS<span>位置　　高度・方位</span></h2><div class="list">${rows}</div><p class="note">行をタップすると詳細。↑は地平線の上、↓は下。</p>
-    <h2>BALANCE<span>七天体</span></h2><dl class="kv"><dt>元素</dt><dd>${ELEMENT.map((t, i) => `${t} ${el[i]}`).join("　")}</dd><dt>区分</dt><dd>${MODE.map((t, i) => `${t} ${mo[i]}`).join("　")}</dd></dl>
-    <h2>HOUSES<span>ホールサイン</span></h2><div class="list">${houses}</div>`;
+    return `<div class="item house"><span class="no">${i + 1}</span>${signG(s)}<span>${SIGN[s]}<small>${k}・主 ${BODY[r]}</small></span><span class="occ">${S.body.slice(0, 10).filter(b => b.house === i + 1).map(b => bodyG(b.id, "s")).join("")}</span></div>`;
+  })) + `<p class="foot">七天体　${ELEMENT.map((t, i) => t + el[i]).join(" ")}　／　${MODE.map((t, i) => t + mo[i]).join(" ")}</p>`);
 }
 function drawSheet() {
   const b = S.body[sheetBody], f = F && F.body[sheetBody], s = signOf(b.lon), kv = [];
-  const add = (k, v) => kv.push(`<dt>${k}</dt><dd>${v}</dd>`);
+  const add = (k, v, w) => kv.push(`<div${w ? ' class="w"' : ""}><dt>${k}</dt><dd>${v}</dd></div>`);
   add("黄経", `${SIGN[s]} ${dms(b.lon)}`);
-  if (b.id !== 10) { add("黄緯", ang(b.lat, true)); add("赤経 / 赤緯", `${Math.floor(b.ra / 15)}h${two(Math.floor(b.ra * 4) % 60)}m / ${ang(b.dec, true)}`); }
-  add("速度", `${b.speed < 0 ? "−" : "+"}${ang(Math.abs(b.speed))} /日${retroShown(b) ? "（逆行）" : ""}`);
+  add("速度 /日", `${b.speed < 0 ? "−" : "+"}${ang(Math.abs(b.speed))}${retroShown(b) ? " 逆行" : ""}`);
   add("ハウス", `第${b.house} ${HOUSE[b.house - 1]}`);
   if (b.id !== 10) {
-    add("高度 / 方位", `${ang(b.alt, true)} / ${COMPASS[Math.round(b.az / 22.5) % 16]} ${Math.round(b.az) % 360}°`);
-    if (f) add("出 / 南中 / 没", `${hhmm(f.rise)} / ${hhmm(f.transit)} / ${hhmm(f.set)}`);
+    add("黄緯", ang(b.lat, true));
+    add("赤経・赤緯", `${Math.floor(b.ra / 15)}h${two(Math.floor(b.ra * 4) % 60)}m ${ang(b.dec, true)}`);
+    add("高度・方位", `${ang(b.alt, true)} ${COMPASS[Math.round(b.az / 22.5) % 16]}`);
     add("距離", b.id === 1 ? `${(Math.round(S.moonKm / 1000) * 1000).toLocaleString("ja-JP")} km` : `${b.dist.toFixed(2)} au`);
   }
+  if (b.id < 7) add("キーワード", KW[b.id]);
   if (f && f.ingT) add("次の星座", `${SIGN[f.ingSign]} ${when(f.ingT, ingErr(b.id))}`);
   if (f && f.stT) add(f.stDir < 0 ? "逆行開始" : "順行に戻る", when(f.stT, 43200));
   if (b.id < 7) {
-    add("品位", digs(b)); if (b.solar) add("太陽との関係", SOLAR[b.solar]);
-    add("点数", `本質 ${b.ess >= 0 ? "+" : ""}${b.ess} ／ 偶有 ${b.acc >= 0 ? "+" : ""}${b.acc}`);
-    add("キーワード", KW[b.id]);
+    add("品位", digs(b) + (b.solar ? "・" + SOLAR[b.solar] : ""));
+    add("点数", `本質 ${b.ess >= 0 ? "+" : ""}${b.ess}　偶有 ${b.acc >= 0 ? "+" : ""}${b.acc}`);
   }
-  add("支配", `星座 ${BODY[b.rDom]} ／ 三区分 ${BODY[b.rTrip]}<br>境界 ${BODY[b.rTerm]} ／ フェイス ${BODY[b.rFace]}`);
-  const as = S.aspects.filter(a => a.a === b.id || a.b === b.id).map(a => { const o = a.a === b.id ? a.b : a.a; return `${aspG(a.type, "s")} ${BODY[o]} ${ang(a.orb)}`; });
-  if (as.length) add("角度", as.join("<br>"));
+  if (f && b.id !== 10) add("出・南中・没", `${hhmm(f.rise)}　${hhmm(f.transit)}　${hhmm(f.set)}`, 1);
+  add("支配", `星座 ${BODY[b.rDom]}　三区分 ${BODY[b.rTrip]}　境界 ${BODY[b.rTerm]}　フェイス ${BODY[b.rFace]}`, 1);
+  const as = S.aspects.filter(a => a.a === b.id || a.b === b.id).map(a => `<span class="nb">${aspG(a.type, "s")}${bodyG(a.a === b.id ? a.b : a.a, "s")} ${ang(a.orb)}</span>`);
+  if (as.length) add("角度", as.join("　"), 1);
   $("sheet").innerHTML = `<header>${bodyG(b.id, "l")}<div><b>${BODY[b.id]}</b><p>${SIGN[s]} ${ELEMENT[s % 4]}・${MODE[s % 3]}</p></div><button class="x" data-act="close" aria-label="閉じる">×</button></header><dl class="kv">${kv.join("")}</dl>`;
 }
-function openSheet(b) { sheetBody = b; drawSheet(); $("shade").hidden = $("sheet").hidden = false; $("sheet").scrollTop = 0; }
+function openSheet(b) { sheetBody = b; drawSheet(); $("shade").hidden = $("sheet").hidden = false; }
 function closeSheet() { sheetBody = -1; $("shade").hidden = $("sheet").hidden = true; }
 
-// ---- ASPECTS --------------------------------------------------------------------------------
 function exactOf(a) {
   const key = `${a.a}.${a.b}.${a.type}`, n = now();
   const e = exact[key];
@@ -209,96 +227,94 @@ function exactOf(a) {
   return exact[key].t;
 }
 function drawAspects() {
-  const list = S.aspects.slice().sort((x, y) => x.orb - y.orb);
-  const row = a => {
-    const t = a.applying ? exactOf(a) : 0;
-    return `<div class="item asp"><span class="tri">${bodyG(a.a)}${aspG(a.type)}${bodyG(a.b)}</span><span>${BODY[a.a]} ${ASPECT[a.type]} ${BODY[a.b]}<small>${ASPECT_KW[a.type]}${t ? ` ／ 成立 ${when(t, errOf(a.a, a.b))}` : ""}</small></span><span class="orb">${ang(a.orb)}<small>${a.applying ? "接近" : "分離"}</small></span></div>`;
-  };
-  const C = list.filter(a => a.b < 7), O = list.filter(a => a.b >= 7);
-  let g = "";
-  for (let i = 1; i < 10; i++) {
-    g += "<tr>";
-    for (let j = 0; j < i; j++) { const a = S.aspects.find(a => a.a === j && a.b === i); g += `<td>${a ? aspG(a.type, "s") : ""}</td>`; }
-    g += `<td class="h">${bodyG(i, "s")}</td>` + (i < 9 ? `<td colspan="${9 - i}" style="border:0"></td>` : "") + "</tr>";
+  if (sub[2] < 2) {
+    const list = S.aspects.filter(a => (a.b < 7) === (sub[2] === 0)).sort((x, y) => x.orb - y.orb).map(a => {
+      const t = a.applying ? exactOf(a) : 0;
+      return `<div class="item asp"><span class="tri">${bodyG(a.a)}${aspG(a.type)}${bodyG(a.b)}</span><span class="nm">${BODY[a.a]} ${ASPECT[a.type]} ${BODY[a.b]}<small>${ASPECT_KW[a.type]}${t ? ` ／ 成立 ${when(t, errOf(a.a, a.b))}` : ""}</small></span><span class="orb">${ang(a.orb)}<small>${a.applying ? "接近" : "分離"}</small></span></div>`;
+    });
+    return page(2, paged(list, 42, "許容度内の角度なし"));
   }
-  g = `<tr><td class="h">${bodyG(0, "s")}</td><td colspan="9" style="border:0"></td></tr>` + g;
-  $("p2").innerHTML = `<h2>ASPECTS<span>七天体 ${C.length}件</span></h2><div class="list">${C.map(row).join("") || '<p class="empty">許容度内の角度なし</p>'}</div>
-    <h2>OUTER<span>天王星・海王星・冥王星 ${O.length}件</span></h2><div class="list">${O.map(row).join("") || '<p class="empty">許容度内の角度なし</p>'}</div>
-    <h2>GRID</h2><table class="grid">${g}</table><p class="note">数値は正確な角度からのずれ（オーブ）。接近＝これから成立、分離＝成立後。成立の時刻は、天体の遅さに応じて「頃」や日付のみで表示。</p>`;
+  let g = "";
+  for (let i = 0; i < 10; i++) {
+    g += "<tr>";
+    for (let j = 0; j < 10; j++) {
+      const a = j < i && S.aspects.find(a => a.a === j && a.b === i);
+      g += j === i ? `<td class="h">${bodyG(i, "s")}</td>` : j > i ? '<td class="n"></td>' : `<td>${a ? `${aspG(a.type, "s")}<small>${a.orb.toFixed(1)}</small>` : ""}</td>`;
+    }
+    g += "</tr>";
+  }
+  page(2, `<table class="grid">${g}</table><p class="foot">数字は正確な角度からのずれ（度）</p>`);
 }
 
-// ---- TIME -----------------------------------------------------------------------------------
 function evRow(e) {
   let ic = "", tx = "", err = e.err;
-  if (e.kind === 0) {
-    ic = bodyG(e.a) + aspG(e.b) + bodyG(e.c); tx = `${BODY[e.a]} ${ASPECT[e.b]} ${BODY[e.c]}`;
-  } else if (e.kind === 1) { ic = bodyG(e.a) + signG(e.b); tx = `${BODY[e.a]} ${SIGN[e.b]}へ`; }
+  if (e.kind === 0) { ic = bodyG(e.a) + aspG(e.b) + bodyG(e.c); tx = `${BODY[e.a]} ${ASPECT[e.b]} ${BODY[e.c]}`; }
+  else if (e.kind === 1) { ic = bodyG(e.a) + signG(e.b); tx = `${BODY[e.a]} ${SIGN[e.b]}へ`; }
   else if (e.kind === 2) { ic = bodyG(e.a); tx = `${BODY[e.a]} ${e.b ? "逆行開始" : "順行に戻る"}`; }
-  else if (e.kind === 3) { ic = `<svg class="g" viewBox="-11 -11 22 22" style="stroke:none">${moonSvg(9, e.a * 90 || .01)}</svg>`; tx = ["新月", "上弦", "満月", "下弦"][e.a]; }
+  else if (e.kind === 3) { ic = moonIcon(e.a * 90); tx = PH4[e.a]; }
   else { ic = bodyG(0); tx = e.kind === 4 ? "日の出" : "日の入り"; }
   const tm = err > 10800 ? "<i>この日頃</i>" : `${hm(e.t)}${err > 180 ? "<i> 頃</i>" : ""}`;
   return `<div class="item ev"><span class="tm">${tm}</span><span class="ic">${ic}</span><span>${tx}</span></div>`;
 }
 function drawTime() {
   const n = now();
-  let hours = `<p class="empty">日の出・日の入りがないため算出できません</p>`;
-  if (S.hValid) {
+  if (sub[3] === 0) {
+    if (!S.hValid) return page(3, '<p class="empty">日の出・日の入りがないため算出できません</p>');
     const CH = [6, 5, 4, 0, 3, 2, 1], st = CH.indexOf(S.dayRuler);
     const h = k => {
-      const day = k < 12, a = day ? S.sunrise : S.sunset, len = (day ? S.sunset - S.sunrise : S.nextSunrise - S.sunset) / 12, t = a + (k % 12) * len, b = CH[(st + k) % 7];
-      return `<div class="item hour${k === S.hourIndex ? " now" : ""}"><span class="no">${k % 12 + 1}</span>${bodyG(b, "s")}<span>${BODY[b]}</span><span class="tm">${hm(t)}</span></div>`;
+      const day = k < 12, a = day ? S.sunrise : S.sunset, len = (day ? S.sunset - S.sunrise : S.nextSunrise - S.sunset) / 12, b = CH[(st + k) % 7];
+      return `<div class="item hour${k === S.hourIndex ? " now" : ""}"><span class="no">${k % 12 + 1}</span>${bodyG(b, "s")}<span>${BODY[b]}</span><span class="tm">${hm(a + (k % 12) * len)}</span></div>`;
     };
-    const col = o => Array.from({ length: 12 }, (_, i) => h(o + i)).join("");
-    hours = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:22px"><div><p class="sub" style="font-size:12px;padding:4px 0">昼 ${hm(S.sunrise)}–${hm(S.sunset)}</p><div class="list">${col(0)}</div></div><div><p class="sub" style="font-size:12px;padding:4px 0">夜 ${hm(S.sunset)}–${hm(S.nextSunrise)}</p><div class="list">${col(12)}</div></div></div>`;
+    const col = (o, t) => `<div class="col"><p class="sub">${t}</p>${rows(Array.from({ length: 12 }, (_, i) => h(o + i)))}</div>`;
+    return page(3, `<div class="cols">${col(0, `昼 ${hm(S.sunrise)}–${hm(S.sunset)}`)}${col(12, `夜 ${hm(S.sunset)}–${hm(S.nextSunrise)}`)}</div><p class="foot">日の主 ${BODY[S.dayRuler]}　いま ${BODY[S.hourRuler]}（${hm(S.hourEnd)}まで）</p>`);
   }
-  let ev = "";
-  if (F) {
-    let day = -1;
-    for (const e of F.events) {
+  if (sub[3] === 1) {
+    const d0 = dayNo(n), by = Array.from({ length: 7 }, () => []);
+    if (F) for (const e of F.events) {
       if (e.t < n - 30 || (e.kind === 0 && e.a === 0 && e.c === 1 && e.b % 2 === 0)) continue;  // Sun-Moon 0/90/180 = lunar phase
-      if (filter === "moon" ? !((e.kind === 0 && e.c === 1) || (e.kind === 0 && e.a === 1) || (e.kind === 1 && e.a === 1) || e.kind === 3)
-        : filter === "slow" ? e.kind === 4 || e.kind === 5 || e.a === 1 && e.kind < 3 || e.kind === 0 && e.c === 1 : false) continue;
-      const t = Math.round(e.t / 60) * 60;
-      if (dayNo(t) !== day) { day = dayNo(t); ev += `<h2>${mday(t)} ${WEEK[D(t).getDay()]}<span>${["今日", "明日"][day - dayNo(n)] || WEEKJ[D(t).getDay()] + "曜日"}</span></h2>`; }
-      ev += evRow(e);
+      const k = dayNo(Math.round(e.t / 60) * 60) - d0;
+      if (k >= 0 && k < 7) by[k].push(e);
     }
+    const days = by.map((_, k) => { const t = n + k * 86400; return `<button data-day="${k}" aria-pressed="${dayPick === k}"><small>${k === 0 ? "今日" : WEEKJ[D(t).getDay()]}</small>${D(t).getDate()}</button>`; }).join("");
+    return page(3, `<div class="days">${days}</div>` + paged(by[dayPick].map(evRow), 40, "この日の予定なし"));
   }
-  const ph = F ? F.phase.map((t, k) => [t, k]).filter(x => x[0]).sort((a, b) => a[0] - b[0]) : [];
-  $("p3").innerHTML = `<h2>LUNATION</h2><div class="quad">${ph.map(([t, k]) => `<div><svg viewBox="-13 -13 26 26" width="30" height="30" aria-hidden="true">${moonSvg(11, k * 90 || .01)}</svg><b style="display:block;font:400 13px var(--txt)">${["新月", "上弦", "満月", "下弦"][k]}</b><span style="font:400 12px var(--txt);white-space:nowrap">${mday(t)} ${hm(t)}頃</span></div>`).join("")}</div>
-    <h2>PLANETARY HOURS<span>${S.hValid ? `日の主 ${BODY[S.dayRuler]}` : ""}</span></h2>${hours}
-    <h2>COMING 7 DAYS</h2><div class="seg">${[["all", "すべて"], ["moon", "月"], ["slow", "月以外"]].map(([k, t]) => `<button data-filter="${k}" aria-pressed="${filter === k}">${t}</button>`).join("")}</div>
-    <div class="evs">${ev || '<p class="empty">該当なし</p>'}</div><p class="note">角度は七天体どうし。月の時刻の誤差は最大10分ほど、新月などは最大10分ほど。</p>`;
+  const m = S.body[1], f = F && F.body[1], kv = [];
+  const add = (k, v) => kv.push(`<div><dt>${k}</dt><dd>${v}</dd></div>`);
+  add("位置", `${SIGN[signOf(m.lon)]} ${dms(m.lon)}`); add("輝面", `${Math.round(S.illum * 100)}%`);
+  add("月齢", `約${(S.elong / 360 * 29.53).toFixed(1)}`); add("速度 /日", ang(m.speed, true));
+  add("高度・方位", `${ang(m.alt, true)} ${COMPASS[Math.round(m.az / 22.5) % 16]}`); add("距離", `${(Math.round(S.moonKm / 1000) * 1000).toLocaleString("ja-JP")} km`);
+  add("出・没", f ? `${hhmm(f.rise)}　${hhmm(f.set)}` : "—"); add("次の星座", `${SIGN[(signOf(m.lon) + 1) % 12]} ${when(S.ingress, 700)}`);
+  page(3, `<div class="moonbox"><svg viewBox="-13 -13 26 26" role="img" aria-label="${PHASE[S.phase]}">${moonSvg(12, S.elong)}</svg><div><b>${PHASE[S.phase]}</b><span class="sub">${PHASE_KW[S.phase]}</span></div></div><dl class="kv">${kv.join("")}</dl>
+    <div class="quad moons">${phases().map(([t, k]) => `<div><svg viewBox="-13 -13 26 26" width="26" height="26" aria-hidden="true">${moonSvg(11, k * 90 || .01)}</svg><span>${PH4[k]}</span><small>${mday(t)} ${hm(t)}頃</small></div>`).join("")}</div>`, "moonv");
 }
 
-// ---- GUIDE ----------------------------------------------------------------------------------
 let wake = null;
 function drawGuide() {
-  const lg = (ic, a, b) => `<div class="lg"><span>${ic}</span><span>${a}</span><span>${b}</span></div>`;
-  $("p4").innerHTML = `<div class="guide"><h2>ABOUT</h2><p>いまの場所・いまの時刻の空を、古典占星術の形式で表示します。示すのは事実と伝統的なキーワードだけで、解釈は読む人に委ねます。</p>
-  <h2>SKY<span>星図の読み方</span></h2>
-  ${lg('<span class="clay">▶</span>', "ASC", "東の地平線に昇る点（左端）")}${lg("- -", "横の破線", "地平線。上側がいま見える空")}${lg('<span class="sub">MC</span>', "もう一本の破線", "南中点と反対側のIC")}
-  ${lg(signG(0), "外の環", "黄道12星座 各30°")}${lg('<span class="sub">1–12</span>', "内側の数字", "ハウス（昇る星座が第1）")}${lg('<span class="clay">—</span>', "暖色の線", "六分60°・三分120° 調和")}${lg('<span class="blue">—</span>', "青い線", "矩90°・衝180° 緊張")}
-  ${lg("— -", "実線 / 破線", "接近中 / 分離中")}${lg('<span class="sub">R</span>', "度数の後のR", "逆行")}
-  <p class="note">天体をタップすると詳細が開きます。左右のスワイプで画面を移動します。</p>
-  <h2>TERMS<span>SKYの項目</span></h2>${[["NEXT", "月が次に作る角度", "星座を出る前に成立するもの"], ["ボイド", "月に次の角度なし", "星座を出るまで"], ["LORD", "昇る星座の支配星", "位置と品位"], ["HOUR", "惑星時間", "日の出・日の入りを12等分"], ["MOON", "月相", "輝いている割合"], ["SECT", "昼夜の別", "太陽が地平線の上か下か"], ["ACTION", "太陽と火星", "強さの目安"], ["DIALOGUE", "水星と金星", "強さの目安"], ["REFLECTION", "土星と月", "強さの目安"]].map(([a, b, c]) => `<div class="lg" style="grid-template-columns:92px 1fr"><span class="en">${a}</span><span style="color:inherit">${b}<small class="sub" style="display:block">${c}</small></span></div>`).join("")}
-  <h2>BODIES</h2>${BODY.map((t, i) => lg(bodyG(i), t, KW[i] || (i === 10 ? "月の昇交点" : "近代の天体"))).join("")}
-  <h2>SIGNS</h2>${SIGN.map((t, i) => lg(signG(i), t, `${ELEMENT[i % 4]}・${MODE[i % 3]}`)).join("")}
-  <h2>ASPECTS</h2>${ASPECT.map((t, i) => lg(aspG(i), `${t} ${ANGLE[i]}°`, ASPECT_KW[i])).join("")}
-  <h2>DIGNITIES</h2>${[["本宮", "自分の星座"], ["高揚", "力が高まる星座"], ["三区分", "元素を支配"], ["境界", "度数域を支配"], ["フェイス", "10°域を支配"], ["損傷", "本宮の反対"], ["失墜", "高揚の反対"], ["漂泊", "品位なし"], ["カジミ", "太陽と17'以内"], ["燃焼", "太陽と8°30'以内"], ["光線下", "太陽と17°以内"]].map(([a, b]) => `<div class="lg" style="grid-template-columns:92px 1fr"><span>${a}</span><span>${b}</span></div>`).join("")}
-  <h2>SETTINGS</h2><p style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn line" data-act="wake" aria-pressed="${!!wake}">${wake ? "画面の常時点灯を止める" : "画面を消さない"}</button><button class="btn line" data-act="gate">位置を変更</button></p>
-  <h2>METHOD</h2><p class="note">トロピカル黄道・ホールサイン。品位と点数はリリー、境界はエジプト式、三区分はドロテウス。天体の位置誤差は最大約4'（月）、ほかは約2'以内。出没は大気差を含む平地の値で、誤差は通常1分未満（地形は含みません）。</p>
-  <p class="note">位置は約1km単位に丸めて、この端末の中にだけ保存します。計算もすべて端末内で行い、外部には送信しません。</p></div>`;
+  const lg = (ic, a, b) => `<div class="item lg"><span>${ic}</span><span>${a}</span><span>${b}</span></div>`;
+  const tx = (a, b) => `<div class="item lg t"><span>${a}</span><span>${b}</span></div>`;
+  const V = [
+    () => rows([lg('<span class="clay">▶</span>', "ASC", "東の地平線に昇る点（左端）"), lg("- -", "横の破線", "地平線。上側がいま見える空"), lg('<span class="sub">MC</span>', "もう一本の破線", "南中点と反対側のIC"),
+      lg(signG(0), "外の環", "黄道12星座 各30°"), lg('<span class="sub">1–12</span>', "内側の数字", "ハウス（昇る星座が第1）"), lg('<span class="clay">—</span>', "暖色の線", "六分60°・三分120° 調和"),
+      lg('<span class="blue">—</span>', "青い線", "矩90°・衝180° 緊張"), lg("— -", "実線 / 破線", "接近中 / 分離中"), lg('<span class="sub">R</span>', "度数の後のR", "逆行"), lg(bodyG(0), "天体をタップ", "詳細が開く")]),
+    () => rows([["NEXT", "月が星座を出る前に作る次の角度"], ["ボイド", "月が星座を出るまで角度なし"], ["LORD", "昇る星座の支配星と、その位置・品位"], ["HOUR", "昼と夜を12等分した惑星時間"], ["MOON", "月相と輝いている割合"], ["SECT", "太陽が地平線の上か下か"], ["ACTION", "太陽と火星の強さの目安"], ["DIALOGUE", "水星と金星の強さの目安"], ["REFLECTION", "土星と月の強さの目安"]].map(([a, b]) => tx(`<span class="en">${a}</span>`, b))),
+    () => rows(BODY.map((t, i) => lg(bodyG(i), t, KW[i] || (i === 10 ? "月の昇交点" : "近代の天体")))),
+    () => rows(SIGN.map((t, i) => lg(signG(i), t, `${ELEMENT[i % 4]}・${MODE[i % 3]}`))),
+    () => rows(ASPECT.map((t, i) => lg(aspG(i), `${t} ${ANGLE[i]}°`, ASPECT_KW[i])).concat([tx("接近", "これから成立"), tx("分離", "成立した後"), tx("頃", "天体の遅さに応じて時刻に幅がある")])),
+    () => rows([["本宮", "自分の星座"], ["高揚", "力が高まる星座"], ["三区分", "元素を支配"], ["境界", "度数域を支配"], ["フェイス", "10°域を支配"], ["損傷", "本宮の反対"], ["失墜", "高揚の反対"], ["漂泊", "品位なし"], ["カジミ", "太陽と17'以内"], ["燃焼", "太陽と8°30'以内"], ["光線下", "太陽と17°以内"]].map(([a, b]) => tx(a, b))),
+    () => `<div class="set"><p>いまの場所と時刻の空を、古典占星術の形式で示します。解釈は読む人に委ねます。</p><div class="btns"><button class="btn line" data-act="wake">${wake ? "常時点灯を止める" : "画面を消さない"}</button><button class="btn line" data-act="gate">位置を変更</button></div>
+      <p class="note">トロピカル黄道・ホールサイン。品位と点数はリリー、境界はエジプト式、三区分はドロテウス。位置の誤差は月が最大約4'、ほかは約2'以内。出没は通常1分未満（地形は含まない）。</p><p class="note">位置は約1km単位に丸め、この端末の中だけに保存します。外部には送信しません。</p></div>`];
+  page(4, V[sub[4]]());
 }
 async function toggleWake() {
   try {
     if (wake) { const w = wake; wake = null; store.set("wake", false); await w.release(); }
-    else { wake = await navigator.wakeLock.request("screen"); store.set("wake", true); wake.onrelease = () => { wake = null; drawGuide(); }; }
+    else { wake = await navigator.wakeLock.request("screen"); store.set("wake", true); wake.onrelease = () => { wake = null; if (S) drawGuide(); }; }
   } catch { wake = null; alert("この環境では画面の常時点灯を使えません"); }
   drawGuide();
 }
 async function rewake() {
   if (!store.get("wake") || wake || !navigator.wakeLock) return;
-  try { wake = await navigator.wakeLock.request("screen"); wake.onrelease = () => { wake = null; drawGuide(); }; drawGuide(); } catch { }
+  try { wake = await navigator.wakeLock.request("screen"); wake.onrelease = () => { wake = null; if (S) drawGuide(); }; if (S) drawGuide(); } catch { }
 }
 
 // ---- first run / manual position ------------------------------------------------------------
@@ -308,7 +324,7 @@ function openGate() {
   g.innerHTML = `<svg width="120" height="120" viewBox="-60 -60 120 120" fill="none" stroke="var(--ring)" aria-hidden="true"><circle r="54"/><circle r="36"/><circle r="3" fill="var(--gold)" stroke="none"/><circle cx="36" r="4.5" fill="var(--ink)" stroke="none"/><path d="M-54 0H54" stroke-dasharray="4 4"/></svg>
     <h1>Star Board</h1><p>いまいる場所の空を計算します。位置はこの端末の中だけで使います。</p>
     <button class="btn" data-act="locate" id="gl">現在地を使う</button><p id="gm" role="status"></p>
-    <form class="pos"><label>緯度（北緯＋）<input name="lat" inputmode="text" placeholder="35.68" autocomplete="off"></label><label>経度（東経＋）<input name="lon" inputmode="text" placeholder="139.77" autocomplete="off"></label><button class="btn line">この位置で表示</button></form>
+    <form class="pos"><label>緯度（北緯＋）<input name="lat" inputmode="text" autocomplete="off"></label><label>経度（東経＋）<input name="lon" inputmode="text" autocomplete="off"></label><button class="btn line">この位置で表示</button></form>
     ${pos ? '<button class="btn line" data-act="ungate">戻る</button>' : ""}`;
   gateState();
 }
@@ -327,12 +343,14 @@ document.addEventListener("submit", e => {
 
 // ---- events and loop ------------------------------------------------------------------------
 document.addEventListener("click", e => {
-  const b = e.target.closest("[data-body],[data-tab],[data-filter],[data-act]");
+  const b = e.target.closest("[data-body],[data-tab],[data-sub],[data-day],[data-act]");
   if (!b) { if (e.target === $("shade")) closeSheet(); return; }
   const d = b.dataset;
   if (d.body) openSheet(+d.body);
   else if (d.tab) { const p = $("pages"); p.scrollTo({ left: p.clientWidth * +d.tab, behavior: Math.abs(+d.tab - tab) > 1 || matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); }
-  else if (d.filter) { filter = d.filter; drawTime(); }
+  else if (d.sub) { sub[+d.k] = +d.sub; pg = 0; drawers[+d.k](); }
+  else if (d.day) { dayPick = +d.day; pg = 0; drawTime(); }
+  else if (d.act === "next" || d.act === "prev") { pg = Math.max(0, pg + (d.act === "next" ? 1 : -1)); drawPage(); }
   else if (d.act === "locate") locate();
   else if (d.act === "close") closeSheet();
   else if (d.act === "wake") toggleWake();
@@ -342,11 +360,12 @@ document.addEventListener("click", e => {
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeSheet(); });
 $("pages").addEventListener("scroll", () => {
   const k = Math.round($("pages").scrollLeft / $("pages").clientWidth);
-  if (k !== tab && k >= 0 && k < 5) { tab = k; drawTabs(); drawPage(); }
+  if (k !== tab && k >= 0 && k < 5) { tab = k; pg = 0; drawTabs(); drawPage(); }
 }, { passive: true });
-addEventListener("resize", () => { $("pages").scrollLeft = $("pages").clientWidth * tab; });
+addEventListener("resize", () => { $("pages").scrollLeft = $("pages").clientWidth * tab; if (S) drawPage(); });
 
-function drawPage() { if (S) [drawSky, drawPlanets, drawAspects, drawTime, () => { if (!$("p4").firstChild) drawGuide(); }][tab](); }
+const drawers = [drawSky, drawPlanets, drawAspects, drawTime, drawGuide];
+function drawPage() { if (S) drawers[tab](); }
 function refresh(all) {
   if (!pos) return;
   const n = now();
@@ -354,7 +373,7 @@ function refresh(all) {
   S = Engine.snap(n, pos.lat, pos.lon, -D(n).getTimezoneOffset() * 60);
   if (!F || n - F.t > 300 || n < F.t) { F = Engine.forecast(n, pos.lat, pos.lon, 7); exact = {}; }
   if (all) { drawSky(); drawPlanets(); drawAspects(); drawTime(); drawGuide(); } else drawPage();
-  if (sheetBody >= 0) { const y = $("sheet").scrollTop; drawSheet(); $("sheet").scrollTop = y; }
+  if (sheetBody >= 0) drawSheet();
 }
 let lastDraw = 0;
 function tick() {
