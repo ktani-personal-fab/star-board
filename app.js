@@ -2,7 +2,7 @@
 "use strict";
 const BODY = ["太陽", "月", "水星", "金星", "火星", "木星", "土星", "天王星", "海王星", "冥王星", "ノード"];
 const SIGN = ["牡羊座", "牡牛座", "双子座", "蟹座", "獅子座", "乙女座", "天秤座", "蠍座", "射手座", "山羊座", "水瓶座", "魚座"];
-const ASPECT = ["合", "六分", "矩", "三分", "衝"], ANGLE = [0, 60, 90, 120, 180], ASPECT_KW = ["融合", "好機", "摩擦", "調和", "対立"];
+const ANGLE = [0, 60, 90, 120, 180], ASPECT_KW = ["融合", "好機", "摩擦", "調和", "対立"];
 const PHASE = ["新月", "三日月", "上弦", "十三夜", "満月", "寝待月", "下弦", "有明月"];
 const PHASE_KW = ["始まり", "芽生え", "決断", "調整", "結実", "分配", "解放", "休息"];
 const KW = ["意志・公", "感情・日常", "言葉・情報", "調和・好み", "行動・競争", "拡大・寛容", "制限・継続"];
@@ -184,13 +184,13 @@ function drawSky() {
   if (sub[0] === 0) {
     const quad = [["ASC", S.asc], ["MC", S.mc], ["DSC", S.asc + 180], ["IC", S.mc + 180]].map(([k, l]) => `<div><span class="en">${k}</span><b>${signG(signOf(l), "s")} ${dms(l)}</b></div>`).join("");
     return page(0, `<div class="wheelbox">${wheel()}</div><div class="strip"><div class="quad">${quad}</div>
-      <div class="ln"><span class="en">NEXT</span><span>${nextIc}</span><span class="sub">${S.voc ? "" : ASPECT[S.nextAspect]}</span></div>
+      <div class="ln"><span class="en">NEXT</span><span>${nextIc}</span><span class="sub">${S.voc ? "" : ASPECT_KW[S.nextAspect]}</span></div>
       <div class="ln"><span class="en">HOUR</span><span>${S.hValid ? `${bodyG(S.hourRuler)} ${BODY[S.hourRuler]}` : "—"}</span><span class="sub">${S.hValid ? `${hm(S.hourStart)}–${hm(S.hourEnd)}` : ""}</span></div>
       <div class="ln"><span class="en">MOON</span><span>${moonIcon(S.elong)} ${PHASE[S.phase]}</span><span class="sub">${SIGN[signOf(m.lon)]} ${Math.round(S.illum * 100)}%</span></div></div>`, "sky");
   }
   const r = (t, a, b) => `<div class="row"><span class="en">${t}</span><div>${a}<p>${b}</p></div></div>`;
   const next = S.voc ? `月が${SIGN[signOf(m.lon)]}を出るまで主要な角度なし`
-    : `月 ${ASPECT[S.nextAspect]} ${BODY[K]}（${ANGLE[S.nextAspect]}°） ${KW[1]} × ${KW[K]} ／ ${ASPECT_KW[S.nextAspect]}<br>月は${when(S.ingress, 700)}に${SIGN[(signOf(m.lon) + 1) % 12]}へ`;
+    : `${KW[1]} × ${KW[K]} ／ ${ASPECT_KW[S.nextAspect]} ${ANGLE[S.nextAspect]}°<br>月・${BODY[K]} ／ 月は${when(S.ingress, 700)}に${SIGN[(signOf(m.lon) + 1) % 12]}へ`;
   const ph = phases()[0];
   page(0, r("NEXT", `<b class="big">${nextIc}</b>`, next)
     + r("LORD", `<b>${bodyG(S.lord)} ${BODY[S.lord]}</b> <span class="sub">${SIGN[signOf(lord.lon)]} ${dms(lord.lon)}${retroShown(lord) ? " 逆行" : ""}</span>`, `${KW[S.lord]} ／ 第${lord.house}ハウス ／ ${digs(lord)}${lord.solar ? "・" + SOLAR[lord.solar] : ""}`)
@@ -253,7 +253,7 @@ function drawAspects() {
   if (sub[2] < 2) {
     const list = S.aspects.filter(a => (a.b < 7) === (sub[2] === 0)).sort((x, y) => x.orb - y.orb).map(a => {
       const t = a.applying ? exactOf(a) : 0;
-      return `<div class="item asp"><span class="tri">${bodyG(a.a)}${aspG(a.type)}${bodyG(a.b)}</span><span class="nm">${BODY[a.a]} ${ASPECT[a.type]} ${BODY[a.b]}<small>${ASPECT_KW[a.type]}${t ? ` ／ 成立 ${when(t, errOf(a.a, a.b))}` : ""}</small></span><span class="orb">${ang(a.orb)}<small>${a.applying ? "接近" : "分離"}</small></span></div>`;
+      return `<div class="item asp"><span class="tri">${bodyG(a.a)}${aspG(a.type)}${bodyG(a.b)}</span><span class="nm">${BODY[a.a]}・${BODY[a.b]}<small>${ASPECT_KW[a.type]}${t ? ` ／ 成立 ${when(t, errOf(a.a, a.b))}` : ""}</small></span><span class="orb">${ang(a.orb)}<small>${a.applying ? "接近" : "分離"}</small></span></div>`;
     });
     return page(2, paged(list, 42, "許容度内の角度なし"));
   }
@@ -271,7 +271,7 @@ function drawAspects() {
 
 function evRow(e) {
   let ic = "", tx = "", err = e.err;
-  if (e.kind === 0) { ic = bodyG(e.a) + aspG(e.b) + bodyG(e.c); tx = `${BODY[e.a]} ${ASPECT[e.b]} ${BODY[e.c]}`; }
+  if (e.kind === 0) { ic = bodyG(e.a) + aspG(e.b) + bodyG(e.c); tx = `${BODY[e.a]}・${BODY[e.c]}`; }
   else if (e.kind === 1) { ic = bodyG(e.a) + signG(e.b); tx = `${BODY[e.a]} ${SIGN[e.b]}へ`; }
   else if (e.kind === 2) { ic = bodyG(e.a); tx = `${BODY[e.a]} ${e.b ? "逆行開始" : "順行に戻る"}`; }
   else if (e.kind === 3) { ic = moonIcon(e.a * 90); tx = PH4[e.a]; }
@@ -317,12 +317,12 @@ function drawGuide() {
   const tx = (a, b) => `<div class="item lg t"><span>${a}</span><span>${b}</span></div>`;
   const V = [
     () => rows([lg('<span class="clay">▶</span>', "ASC", "東の地平線に昇る点（左端）"), lg("- -", "横の破線", "地平線。上側がいま見える空"), lg('<span class="sub">MC</span>', "もう一本の破線", "南中点と反対側のIC"),
-      lg(signG(0), "外の環", "黄道12星座 各30°"), lg('<span class="sub">1–12</span>', "内側の数字", "ハウス（昇る星座が第1）"), lg('<span class="clay">—</span>', "暖色の線", "六分60°・三分120° 調和"),
-      lg('<span class="blue">—</span>', "青い線", "矩90°・衝180° 緊張"), lg("— -", "実線 / 破線", "接近中 / 分離中"), lg('<span class="sub">R</span>', "度数の後のR", "逆行"), lg(bodyG(0), "天体をタップ", "詳細が開く")]),
+      lg(signG(0), "外の環", "黄道12星座 各30°"), lg('<span class="sub">1–12</span>', "内側の数字", "ハウス（昇る星座が第1）"), lg('<span class="clay">—</span>', "暖色の線", `${aspG(1, "s")} 60°　${aspG(3, "s")} 120°　調和`),
+      lg('<span class="blue">—</span>', "青い線", `${aspG(2, "s")} 90°　${aspG(4, "s")} 180°　緊張`), lg("— -", "実線 / 破線", "接近中 / 分離中"), lg('<span class="sub">R</span>', "度数の後のR", "逆行"), lg(bodyG(0), "天体をタップ", "詳細が開く")]),
     () => rows([["NEXT", "月が星座を出る前に作る次の角度"], ["ボイド", "月が星座を出るまで角度なし"], ["LORD", "昇る星座の支配星と、その位置・品位"], ["HOUR", "昼と夜を12等分した惑星時間"], ["MOON", "月相と輝いている割合"], ["SECT", "太陽が地平線の上か下か"], ["ACTION", "太陽と火星の強さの目安"], ["DIALOGUE", "水星と金星の強さの目安"], ["REFLECTION", "土星と月の強さの目安"]].map(([a, b]) => tx(`<span class="en">${a}</span>`, b))),
     () => rows(BODY.map((t, i) => lg(bodyG(i), t, KW[i] || (i === 10 ? "月の昇交点" : "近代の天体")))),
     () => rows(SIGN.map((t, i) => lg(signG(i), t, `${ELEMENT[i % 4]}・${MODE[i % 3]}`))),
-    () => rows(ASPECT.map((t, i) => lg(aspG(i), `${t} ${ANGLE[i]}°`, ASPECT_KW[i])).concat([tx("接近", "これから成立"), tx("分離", "成立した後"), tx("頃", "天体の遅さに応じて時刻に幅がある")])),
+    () => rows(ANGLE.map((t, i) => lg(aspG(i), `${t}°`, ASPECT_KW[i])).concat([tx("接近", "これから成立"), tx("分離", "成立した後"), tx("頃", "天体の遅さに応じて時刻に幅がある")])),
     () => rows([["本宮", "自分の星座"], ["高揚", "力が高まる星座"], ["三区分", "元素を支配"], ["境界", "度数域を支配"], ["フェイス", "10°域を支配"], ["損傷", "本宮の反対"], ["失墜", "高揚の反対"], ["漂泊", "品位なし"], ["カジミ", "太陽と17'以内"], ["燃焼", "太陽と8°30'以内"], ["光線下", "太陽と17°以内"]].map(([a, b]) => tx(a, b))),
     () => `<div class="set"><p>いまの場所と時刻の空を、古典占星術の形式で示します。解釈は読む人に委ねます。</p><div class="btns"><button class="btn line" data-act="wake">${wake ? "常時点灯を止める" : "画面を消さない"}</button><button class="btn line" data-act="gate">位置を変更</button><button class="btn line" data-act="when">日時と場所を指定</button></div>
       <p class="note">トロピカル黄道・ホールサイン。品位と点数はリリー、境界はエジプト式、三区分はドロテウス。位置の誤差は月が最大約4'、ほかは約2'以内。出没は通常1分未満（地形は含まない）。</p><p class="note">位置は約1km単位に丸め、この端末の中だけに保存します。外部には送信しません。</p></div>`];
